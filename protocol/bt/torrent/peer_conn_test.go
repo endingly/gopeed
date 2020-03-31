@@ -2,8 +2,9 @@ package torrent
 
 import (
 	"fmt"
-	"github.com/monkeyWie/gopeed/down/bt/peer"
-	"github.com/monkeyWie/gopeed/down/bt/tracker"
+	"github.com/monkeyWie/gopeed/protocol/bt/peer"
+	"github.com/monkeyWie/gopeed/protocol/bt/tracker"
+	"os"
 	"sync"
 	"testing"
 	"time"
@@ -24,46 +25,6 @@ func Test_peerState_ready(t *testing.T) {
 
 }
 
-func Test_peerState_download(t *testing.T) {
-
-	psCh := getUsablePeerMore()
-
-	lock := sync.Mutex{}
-	state := map[int]bool{}
-
-	for {
-		select {
-		case ps := <-psCh:
-			go func() {
-				// 下载前准备
-				err := ps.ready()
-				if err != nil {
-					fmt.Println("ready error")
-					return
-				}
-				have := ps.getHavePieces(ps.bitfield)
-				fmt.Printf("download is ready,have %d\n", len(have))
-				if len(have) > 0 {
-					// 获取分片的长度
-					for _, index := range have {
-						lock.Lock()
-						if state[index] {
-							lock.Unlock()
-							continue
-						} else {
-							state[index] = true
-							lock.Unlock()
-						}
-						fmt.Printf("download index %d\n", index)
-						ps.downloadPiece(index)
-					}
-					return
-				}
-			}()
-		}
-	}
-}
-
 func Test_peerState_downloadPiece(t *testing.T) {
 
 	ps := getUsablePeer()
@@ -80,7 +41,7 @@ func Test_peerState_downloadPiece(t *testing.T) {
 		// 获取分片的长度
 		for _, index := range have {
 			fmt.Printf("download index %d\n", index)
-			ps.downloadPiece(index)
+			ps.downloadPiece(int(index))
 		}
 		return
 	}
@@ -100,11 +61,7 @@ func getUsablePeerMore() chan *peerConn {
 		PeerID:   torrent.PeerID,
 		MetaInfo: torrent.MetaInfo,
 	}
-	peers, err := tracker.Tracker()
-	if err != nil {
-		panic(err)
-	}
-	fmt.Printf("Tracker end,peer count:%d\n", len(peers))
+	peers := <-tracker.Tracker()
 	ch := make(chan *peerConn)
 	for i := range peers {
 		go peerTest(torrent, &peers[i], ch)
@@ -144,4 +101,22 @@ func TestSome(t *testing.T) {
 	fmt.Println(r)
 	fmt.Println("111")
 
+}
+
+func TestSome2(t *testing.T) {
+	wg := sync.WaitGroup{}
+	wg.Add(10)
+	file, err := os.OpenFile("e:/testbt/test.data", os.O_RDWR|os.O_CREATE, 0644)
+	for i := 0; i < 10; i++ {
+		go func(i int) {
+			for j := 0; j < 100; j++ {
+				if err != nil {
+					panic(err)
+				}
+				_, err = file.WriteAt([]byte{byte(i)}, int64(i*8))
+			}
+			wg.Done()
+		}(i)
+	}
+	wg.Wait()
 }
